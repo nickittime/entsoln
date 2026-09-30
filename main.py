@@ -47,6 +47,19 @@ app.add_middleware(
 )
 
 
+# Max request body size guard (10 MB)
+MAX_BODY_SIZE = 10 * 1024 * 1024
+
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_BODY_SIZE:
+        return JSONResponse(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            content={"error_code": "PAYLOAD_TOO_LARGE", "message": "Request body exceeds 10MB limit."}
+        )
+    return await call_next(request)
+
 @app.middleware("http")
 async def telemetry_and_tracing_middleware(request: Request, call_next):
     """Enrich requests with correlation IDs and record Prometheus latency metrics."""
