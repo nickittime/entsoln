@@ -1,0 +1,130 @@
+networks:
+  zermp-net:
+    driver: bridge
+
+volumes:
+  pg_data:
+  redis_data:
+  clickhouse_data:
+  s3_data:
+  sftp_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zermp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-zermp_core}
+      POSTGRES_USER: ${POSTGRES_USER:-zermp_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zermp_secure_dev_password_2026}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zermp_admin} -d ${POSTGRES_DB:-zermp_core}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zermp-net
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: zermp-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redis_secure_dev_password_2026}"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secure_dev_password_2026}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zermp-net
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: zermp-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-zermp_analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse_dev_pass_2026}
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zermp-net
+
+  s3:
+    image: localstack/localstack:3.4
+    container_name: zermp-s3
+    restart: unless-stopped
+    environment:
+      - SERVICES=s3
+      - AWS_DEFAULT_REGION=ap-south-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - s3_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4566/_localstack/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - zermp-net
+
+  sftp:
+    image: atmoz/sftp:latest
+    container_name: zermp-sftp-mock
+    restart: unless-stopped
+    command: ${SFTP_USER:-finnone_etl}:${SFTP_PASSWORD:-finnone_drop_password_2026}:1001:1001:upload
+    ports:
+      - "2222:22"
+    volumes:
+      - sftp_data:/home/${SFTP_USER:-finnone_etl}/upload
+    networks:
+      - zermp-net
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: zermp-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./tests:/app/tests
+      - ./docs:/app/docs
+      - ./pytest.ini:/app/pytest.ini
+      - ./main.py:/app/main.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    networks:
+      - zermp-net

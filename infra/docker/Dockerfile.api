@@ -1,0 +1,43 @@
+FROM python:3.12-slim-bookworm AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+FROM python:3.12-slim-bookworm AS runner
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/zermp/.local/bin:$PATH" \
+    PYTHONPATH="/app"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 10001 zermp && \
+    useradd -u 10001 -g zermp -m -s /bin/bash zermp
+
+WORKDIR /app
+
+COPY --from=builder --chown=zermp:zermp /root/.local /home/zermp/.local
+COPY --chown=zermp:zermp src/ /app/src/
+COPY --chown=zermp:zermp scripts/ /app/scripts/
+COPY --chown=zermp:zermp main.py /app/main.py
+
+USER 10001:10001
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/healthz || exit 1
+
+ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
