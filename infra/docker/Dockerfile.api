@@ -27,6 +27,7 @@ RUN groupadd -g 10001 zermp && \
     useradd -u 10001 -g zermp -m -s /bin/bash zermp
 
 WORKDIR /app
+RUN python -m pip install --upgrade pip --no-cache-dir
 
 COPY --from=builder --chown=zermp:zermp /root/.local /home/zermp/.local
 COPY --chown=zermp:zermp src/ /app/src/

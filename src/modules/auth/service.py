@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 from typing import Dict, Optional
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 from src.common.config.settings import get_settings
 from src.common.exceptions.base import ZERMPBaseException
 from src.common.logging.logger import get_logger
